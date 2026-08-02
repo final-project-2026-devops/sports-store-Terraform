@@ -82,7 +82,7 @@ variable "eks_public_access_cidrs" {
 variable "node_instance_types" {
   description = "Instance types used by the default managed node group."
   type        = list(string)
-  default     = ["t3.medium", "t3a.medium"]
+  default     = ["t3.micro"]
 }
 
 variable "node_group_min_size" {
