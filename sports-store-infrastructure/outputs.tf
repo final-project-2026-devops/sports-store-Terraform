@@ -1,0 +1,129 @@
+############################################
+# Networking
+############################################
+
+output "vpc_id" {
+  description = "ID of the VPC."
+  value       = module.vpc.vpc_id
+}
+
+output "public_subnet_ids" {
+  description = "IDs of the public subnets."
+  value       = module.vpc.public_subnets
+}
+
+output "private_subnet_ids" {
+  description = "IDs of the private subnets."
+  value       = module.vpc.private_subnets
+}
+
+############################################
+# EKS
+############################################
+
+output "eks_cluster_name" {
+  description = "Name of the EKS cluster."
+  value       = module.eks.cluster_name
+}
+
+output "eks_cluster_arn" {
+  description = "ARN of the EKS cluster."
+  value       = module.eks.cluster_arn
+}
+
+output "eks_cluster_endpoint" {
+  description = "Endpoint URL of the EKS Kubernetes API server."
+  value       = module.eks.cluster_endpoint
+}
+
+output "eks_cluster_certificate_authority_data" {
+  description = "Base64-encoded certificate authority data for the EKS cluster."
+  value       = module.eks.cluster_certificate_authority_data
+  sensitive   = true
+}
+
+output "eks_oidc_provider_arn" {
+  description = "ARN of the IAM OIDC provider for the EKS cluster (used by IRSA roles)."
+  value       = module.eks.oidc_provider_arn
+}
+
+output "eks_node_security_group_id" {
+  description = "Security group ID attached to the EKS managed node group."
+  value       = module.eks.node_security_group_id
+}
+
+output "ebs_csi_irsa_role_arn" {
+  description = "IAM role ARN used by the EBS CSI driver controller service account."
+  value       = module.ebs_csi_irsa_role.iam_role_arn
+}
+
+output "lb_controller_irsa_role_arn" {
+  description = "IAM role ARN used by the AWS Load Balancer Controller service account."
+  value       = module.lb_controller_irsa_role.iam_role_arn
+}
+
+############################################
+# DynamoDB
+############################################
+
+output "dynamodb_table_names" {
+  description = "Map of service key to DynamoDB table name."
+  value       = { for k, v in aws_dynamodb_table.this : k => v.name }
+}
+
+output "dynamodb_table_arns" {
+  description = "Map of service key to DynamoDB table ARN."
+  value       = { for k, v in aws_dynamodb_table.this : k => v.arn }
+}
+
+output "dynamodb_service_irsa_role_arns" {
+  description = "Map of service key to the IRSA role ARN scoped to that service's DynamoDB table."
+  value       = { for k, v in module.dynamodb_service_irsa_role : k => v.iam_role_arn }
+}
+
+############################################
+# ECR
+############################################
+
+output "ecr_repository_urls" {
+  description = "Map of repository name to its ECR repository URL."
+  value       = { for k, v in aws_ecr_repository.this : k => v.repository_url }
+}
+
+output "ecr_repository_arns" {
+  description = "Map of repository name to its ECR repository ARN."
+  value       = { for k, v in aws_ecr_repository.this : k => v.arn }
+}
+
+############################################
+# Frontend (S3 + CloudFront)
+############################################
+
+output "frontend_bucket_name" {
+  description = "Name of the S3 bucket hosting the frontend static assets."
+  value       = aws_s3_bucket.frontend.id
+}
+
+output "cloudfront_distribution_id" {
+  description = "ID of the CloudFront distribution serving the frontend (used for cache invalidations)."
+  value       = aws_cloudfront_distribution.frontend.id
+}
+
+output "cloudfront_distribution_domain_name" {
+  description = "CloudFront domain name (e.g. dXXXXXXXXXXXXX.cloudfront.net) serving the frontend."
+  value       = aws_cloudfront_distribution.frontend.domain_name
+}
+
+############################################
+# CI/CD (GitHub OIDC)
+############################################
+
+output "github_actions_oidc_provider_arn" {
+  description = "ARN of the GitHub Actions OIDC identity provider."
+  value       = aws_iam_openid_connect_provider.github_actions.arn
+}
+
+output "github_actions_role_arn" {
+  description = "IAM role ARN for GitHub Actions workflows to assume via OIDC (use with aws-actions/configure-aws-credentials)."
+  value       = aws_iam_role.github_actions.arn
+}

@@ -1,0 +1,33 @@
+# Copy to terraform.tfvars for local `terraform plan` runs, or set the
+# equivalent values as Terraform Cloud workspace variables. Do not commit
+# a real terraform.tfvars file.
+
+aws_region  = "us-east-1"
+project_name = "cloudcart"
+environment  = "production"
+
+vpc_cidr = "10.0.0.0/16"
+
+cluster_version            = "1.30"
+eks_public_access_enabled  = true
+eks_public_access_cidrs    = ["203.0.113.0/24"] # restrict to office/CI egress CIDRs
+node_instance_types        = ["t3.medium", "t3a.medium"]
+node_group_min_size        = 2
+node_group_max_size        = 4
+node_group_desired_size    = 2
+
+acm_certificate_arn     = null # or "arn:aws:acm:us-east-1:123456789012:certificate/xxxxx"
+frontend_domain_aliases = []   # e.g. ["www.cloudcart.example.com"]
+cloudfront_price_class  = "PriceClass_100"
+
+github_org = "your-github-org"
+github_allowed_repositories = [
+  "sports-store-infrastructure",
+  "sports-store-frontend",
+  "sports-store-gateway",
+  "sports-store-auth-service",
+  "sports-store-catalog-service",
+  "sports-store-cart-service",
+  "sports-store-order-service",
+  "sports-store-payment-service",
+]
