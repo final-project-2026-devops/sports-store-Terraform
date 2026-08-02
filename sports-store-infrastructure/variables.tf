@@ -172,6 +172,12 @@ variable "cloudfront_price_class" {
 # CI/CD (GitHub OIDC)
 ############################################
 
+variable "create_github_oidc_provider" {
+  description = "Whether to create the GitHub Actions OIDC provider (token.actions.githubusercontent.com). AWS allows only one per account/issuer URL, so set this to false and rely on the data-source lookup if a provider already exists (e.g. created by another stack or a prior apply)."
+  type        = bool
+  default     = true
+}
+
 variable "github_org" {
   description = "GitHub organization or user that owns the CloudCart repositories."
   type        = string

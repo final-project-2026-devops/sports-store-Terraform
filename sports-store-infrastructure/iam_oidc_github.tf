@@ -3,15 +3,33 @@
 ############################################
 
 data "tls_certificate" "github_actions" {
-  url = "https://token.actions.githubusercontent.com/.well-known/openid-configuration"
+  count = var.create_github_oidc_provider ? 1 : 0
+  url   = "https://token.actions.githubusercontent.com/.well-known/openid-configuration"
 }
 
+# AWS accounts allow only one OIDC provider per issuer URL. If a provider for
+# token.actions.githubusercontent.com already exists (created manually, by
+# another stack, or left over from a prior partial apply), creating it again
+# here fails apply with "409 EntityAlreadyExists". Set
+# create_github_oidc_provider = false to instead look it up via data source.
 resource "aws_iam_openid_connect_provider" "github_actions" {
+  count = var.create_github_oidc_provider ? 1 : 0
+
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [data.tls_certificate.github_actions.certificates[0].sha1_fingerprint]
+  thumbprint_list = [data.tls_certificate.github_actions[0].certificates[0].sha1_fingerprint]
 
   tags = local.common_tags
+}
+
+data "aws_iam_openid_connect_provider" "github_actions_existing" {
+  count = var.create_github_oidc_provider ? 0 : 1
+
+  url = "https://token.actions.githubusercontent.com"
+}
+
+locals {
+  github_oidc_provider_arn = var.create_github_oidc_provider ? aws_iam_openid_connect_provider.github_actions[0].arn : data.aws_iam_openid_connect_provider.github_actions_existing[0].arn
 }
 
 ############################################
@@ -25,7 +43,7 @@ data "aws_iam_policy_document" "github_actions_assume_role" {
 
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github_actions.arn]
+      identifiers = [local.github_oidc_provider_arn]
     }
 
     condition {

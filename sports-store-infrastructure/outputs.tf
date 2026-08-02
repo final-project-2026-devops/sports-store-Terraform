@@ -125,7 +125,7 @@ output "cloudfront_distribution_domain_name" {
 
 output "github_actions_oidc_provider_arn" {
   description = "ARN of the GitHub Actions OIDC identity provider."
-  value       = aws_iam_openid_connect_provider.github_actions.arn
+  value       = local.github_oidc_provider_arn
 }
 
 output "github_actions_role_arn" {

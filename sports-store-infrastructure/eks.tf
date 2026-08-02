@@ -54,13 +54,24 @@ module "eks" {
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
 
+  # Explicit (in addition to the implicit dependency via vpc_id/subnet_ids)
+  # so the VPC and its route tables/NAT gateways are fully settled before
+  # the cluster/node group are created, and fully torn down only after them
+  # on destroy.
+  depends_on = [module.vpc]
+
   enable_irsa = true
 
   # API_AND_CONFIG_MAP keeps the legacy aws-auth ConfigMap working while
   # allowing cluster access to also be managed declaratively via
   # access_entries below (e.g. for the GitHub Actions CI/CD role).
-  authentication_mode                      = "API_AND_CONFIG_MAP"
-  enable_cluster_creator_admin_permissions = true
+  authentication_mode = "API_AND_CONFIG_MAP"
+
+  # false: AWS itself auto-creates a cluster-creator access entry for the
+  # IAM principal that provisions the cluster. Leaving this true makes the
+  # module also try to create that same entry, which fails apply with an
+  # access-entry-already-exists conflict.
+  enable_cluster_creator_admin_permissions = false
 
   # Only the managed EKS add-ons that don't require an IRSA role are created
   # inline. The EBS CSI driver is created as a standalone aws_eks_addon
@@ -168,6 +179,8 @@ module "ebs_csi_irsa_role" {
   }
 
   tags = local.common_tags
+
+  depends_on = [module.eks]
 }
 
 data "aws_eks_addon_version" "ebs_csi_driver" {
@@ -208,6 +221,8 @@ module "lb_controller_irsa_role" {
   }
 
   tags = local.common_tags
+
+  depends_on = [module.eks]
 }
 
 resource "kubernetes_service_account" "aws_load_balancer_controller" {
