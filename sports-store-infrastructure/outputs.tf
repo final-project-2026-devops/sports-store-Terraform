@@ -52,6 +52,11 @@ output "eks_node_security_group_id" {
   value       = module.eks.node_security_group_id
 }
 
+output "alb_security_group_id" {
+  description = "Security group ID to attach to ALBs via the alb.ingress.kubernetes.io/security-groups annotation on Kubernetes Ingress resources."
+  value       = aws_security_group.alb.id
+}
+
 output "ebs_csi_irsa_role_arn" {
   description = "IAM role ARN used by the EBS CSI driver controller service account."
   value       = module.ebs_csi_irsa_role.iam_role_arn

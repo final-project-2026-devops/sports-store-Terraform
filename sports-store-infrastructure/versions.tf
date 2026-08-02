@@ -5,7 +5,7 @@ terraform {
   # workspace itself (Settings > Version Control); state locking and remote
   # execution are handled automatically by Terraform Cloud.
   cloud {
-    organization = "your-tfc-organization"
+    organization = "final-project-2026-devops"
 
     workspaces {
       name = "sports-store-infrastructure"

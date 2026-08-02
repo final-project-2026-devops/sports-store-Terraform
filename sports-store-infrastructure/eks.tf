@@ -1,4 +1,42 @@
 ############################################
+# ALB Security Group (attached to ALBs provisioned by the AWS Load Balancer
+# Controller via the alb.ingress.kubernetes.io/security-groups annotation)
+############################################
+
+resource "aws_security_group" "alb" {
+  name        = "${local.cluster_name}-alb-sg"
+  description = "Security group attached to ALBs provisioned by the AWS Load Balancer Controller"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    description = "HTTP from internet"
+    protocol    = "tcp"
+    from_port   = 80
+    to_port     = 80
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "HTTPS from internet"
+    protocol    = "tcp"
+    from_port   = 443
+    to_port     = 443
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    protocol    = "-1"
+    from_port   = 0
+    to_port     = 0
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${local.cluster_name}-alb-sg"
+  })
+}
+
+############################################
 # EKS Cluster
 ############################################
 
@@ -55,6 +93,12 @@ module "eks" {
     default = {
       name = "${local.cluster_name}-default"
 
+      # Explicit, non-prefixed IAM role name: the module's default
+      # (`"${name}-eks-node-group-"` as a name_prefix) exceeds AWS's 38-char
+      # name_prefix limit once cluster_name/environment get long enough.
+      iam_role_use_name_prefix = false
+      iam_role_name            = "${local.cluster_name}-default-role"
+
       instance_types = var.node_instance_types
       capacity_type  = "ON_DEMAND"
 
@@ -77,12 +121,12 @@ module "eks" {
   # ephemeral port range used by container health checks and services.
   node_security_group_additional_rules = {
     ingress_alb_to_nodes = {
-      description = "Ingress from VPC CIDR (ALB/NLB target groups) to node ephemeral ports"
-      protocol    = "tcp"
-      from_port   = 1025
-      to_port     = 65535
-      type        = "ingress"
-      cidr_blocks = [var.vpc_cidr]
+      description              = "Ingress from ALB security group to node ephemeral ports"
+      protocol                 = "tcp"
+      from_port                = 1025
+      to_port                  = 65535
+      type                     = "ingress"
+      source_security_group_id = aws_security_group.alb.id
     }
   }
 
