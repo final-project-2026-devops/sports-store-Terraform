@@ -84,8 +84,9 @@ variable "node_instance_types" {
   type        = list(string)
   # t3.micro caps out at 4 pods/node (ENI limit), which isn't enough room for
   # aws-node + kube-proxy + coredns + ebs-csi + the LB controller to all
-  # schedule across 2 nodes. t3.medium supports 17 pods/node.
-  default = ["t3.medium"]
+  # schedule across 2 nodes. t3.medium isn't Free Tier-eligible on this
+  # account, so t3.small (11 pods/node) is the next viable step up.
+  default = ["t3.small"]
 }
 
 variable "node_group_min_size" {
@@ -169,6 +170,35 @@ variable "cloudfront_price_class" {
     condition     = contains(["PriceClass_100", "PriceClass_200", "PriceClass_All"], var.cloudfront_price_class)
     error_message = "cloudfront_price_class must be one of PriceClass_100, PriceClass_200, PriceClass_All."
   }
+}
+
+############################################
+# Student access (least-privilege IAM users + EKS access)
+############################################
+
+variable "students" {
+  description = "Teammates to provision least-privilege IAM users + EKS access for. Set real values in terraform.tfvars (gitignored) — do not commit names/emails here."
+  type = list(object({
+    name  = string
+    email = string
+  }))
+  default = []
+}
+
+variable "owner_email" {
+  description = "Project owner's email, included alongside student emails in budget alert notifications."
+  type        = string
+  default     = ""
+}
+
+############################################
+# Budgets
+############################################
+
+variable "monthly_budget_usd" {
+  description = "Monthly AWS cost budget (USD). Triggers email alerts at 50/80/100% actual spend and 100% forecasted spend."
+  type        = number
+  default     = 150
 }
 
 ############################################

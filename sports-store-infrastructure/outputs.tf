@@ -120,6 +120,26 @@ output "cloudfront_distribution_domain_name" {
 }
 
 ############################################
+# Student IAM access
+############################################
+
+output "student_iam_usernames" {
+  description = "Map of student name to their IAM username."
+  value       = { for k, v in aws_iam_user.students : k => v.name }
+}
+
+output "student_console_signin_url" {
+  description = "AWS console sign-in URL for IAM users in this account."
+  value       = "https://${data.aws_caller_identity.current.account_id}.signin.aws.amazon.com/console"
+}
+
+output "student_temporary_passwords" {
+  description = "Temporary console passwords (reset required on first login). Share each one only with that student, over a secure/private channel — not a group chat."
+  value       = { for k, v in aws_iam_user_login_profile.students : k => v.password }
+  sensitive   = true
+}
+
+############################################
 # CI/CD (GitHub OIDC)
 ############################################
 
