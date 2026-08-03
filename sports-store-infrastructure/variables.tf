@@ -82,7 +82,10 @@ variable "eks_public_access_cidrs" {
 variable "node_instance_types" {
   description = "Instance types used by the default managed node group."
   type        = list(string)
-  default     = ["t3.micro"]
+  # t3.micro caps out at 4 pods/node (ENI limit), which isn't enough room for
+  # aws-node + kube-proxy + coredns + ebs-csi + the LB controller to all
+  # schedule across 2 nodes. t3.medium supports 17 pods/node.
+  default = ["t3.medium"]
 }
 
 variable "node_group_min_size" {
