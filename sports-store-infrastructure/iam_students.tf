@@ -3,14 +3,14 @@
 #
 # Each teammate gets an IAM user with a temporary console password (reset
 # required on first login). Group policy is AdministratorAccess (full
-# access, including IAM) with a Deny overlay that (1) requires MFA for
-# everything except self-enrolling an MFA device, and (2) blocks destructive
-# actions (Delete/Terminate/Remove/Destroy/Purge/Revoke/Deregister) across
-# services. NOTE: because these users also have IAM write access, the Deny
-# overlay is a soft guardrail against accidents, not a hard boundary — a
-# user could edit or detach this very policy. Trusted-teammate model, not a
-# least-privilege one. Cluster access (kubectl) is granted separately via an
-# EKS access entry per user.
+# access, including IAM) with a Deny overlay blocking destructive actions
+# (Delete/Terminate/Remove) across most services — s3/dynamodb excluded,
+# full CRUD there. MFA is available per-account but not enforced (see notes
+# below on why). NOTE: because these users also have IAM write access, the
+# Deny overlay is a soft guardrail against accidents, not a hard boundary —
+# a user could edit or detach this very policy. Trusted-teammate model, not
+# a least-privilege one. Cluster access (kubectl) is EKS cluster-admin,
+# granted separately via an EKS access entry per user.
 ############################################
 
 locals {
@@ -71,47 +71,13 @@ resource "aws_iam_group_policy_attachment" "students_admin_access" {
 }
 
 data "aws_iam_policy_document" "students_guardrails" {
-  statement {
-    sid    = "AllowSelfServiceMFAAndPasswordAlways"
-    effect = "Allow"
-    actions = [
-      "iam:CreateVirtualMFADevice",
-      "iam:EnableMFADevice",
-      "iam:ResyncMFADevice",
-      "iam:DeactivateMFADevice",
-      "iam:DeleteVirtualMFADevice",
-      "iam:ListMFADevices",
-      "iam:ListVirtualMFADevices",
-      "iam:GetUser",
-      "iam:ChangePassword",
-    ]
-    resources = [
-      "arn:aws:iam::*:mfa/$${aws:username}",
-      "arn:aws:iam::*:user/$${aws:username}",
-    ]
-  }
-
-  statement {
-    sid    = "DenyEverythingElseWithoutMFA"
-    effect = "Deny"
-    not_actions = [
-      "iam:CreateVirtualMFADevice",
-      "iam:EnableMFADevice",
-      "iam:ResyncMFADevice",
-      "iam:ListMFADevices",
-      "iam:ListVirtualMFADevices",
-      "iam:GetUser",
-      "iam:ChangePassword",
-      "sts:GetSessionToken",
-    ]
-    resources = ["*"]
-
-    condition {
-      test     = "BoolIfExists"
-      variable = "aws:MultiFactorAuthPresent"
-      values   = ["false"]
-    }
-  }
+  # MFA is set up on each account (console login security) but intentionally
+  # NOT enforced as a precondition for every action. Static access keys used
+  # from the CLI never carry MFA context (that's an AWS-wide constraint, not
+  # something misconfigured here) — enforcing it here meant every CLI call
+  # needed a manual `sts:GetSessionToken` + MFA-code dance first, which was
+  # blocking real work more than it was preventing anything. Dropped
+  # deliberately in favor of usability for this trusted-teammate model.
 
   # Blocks the common destructive-verb naming conventions across AWS
   # services. IAM rejects wildcards in the service/vendor prefix (only "*"
