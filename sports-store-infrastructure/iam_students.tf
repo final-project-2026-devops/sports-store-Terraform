@@ -17,9 +17,12 @@ locals {
   # Per-service destructive-verb action list for the guardrails Deny below.
   # IAM requires a literal service prefix (no wildcards there), so this is
   # generated rather than a single "*:Delete*"-style pattern.
+  # s3 and dynamodb intentionally excluded — full CRUD (including delete) on
+  # the frontend bucket and the app's data tables is expected day-to-day
+  # work, not an edge case worth guarding against here.
   destructive_verbs = ["Delete", "Terminate", "Remove"]
   guardrail_services = [
-    "ec2", "eks", "ecs", "ecr", "s3", "dynamodb", "rds", "elasticache",
+    "ec2", "eks", "ecs", "ecr", "rds", "elasticache",
     "redshift", "docdb", "neptune", "iam", "elasticloadbalancing",
     "cloudfront", "route53", "acm", "autoscaling", "opensearch", "es",
     "kafka", "sagemaker", "globalaccelerator", "workspaces", "lambda",
@@ -142,7 +145,7 @@ resource "aws_iam_group_policy_attachment" "students_guardrails" {
 }
 
 ############################################
-# EKS cluster access (kubectl) — edit access, not cluster-admin
+# EKS cluster access (kubectl) — full cluster admin
 ############################################
 
 resource "aws_eks_access_entry" "students" {
@@ -155,12 +158,12 @@ resource "aws_eks_access_entry" "students" {
   tags = local.common_tags
 }
 
-resource "aws_eks_access_policy_association" "students_edit" {
+resource "aws_eks_access_policy_association" "students_admin" {
   for_each = aws_iam_user.students
 
   cluster_name  = module.eks.cluster_name
   principal_arn = each.value.arn
-  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
 
   access_scope {
     type = "cluster"
