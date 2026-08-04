@@ -197,13 +197,18 @@ module "eks" {
   }
 
   # Allow inbound traffic from the AWS Load Balancer Controller (ALB/NLB
-  # target groups reach pods directly in IP target-type mode) on the
-  # ephemeral port range used by container health checks and services.
+  # target groups reach pods directly in IP target-type mode). Widened to
+  # start at 80, not 1025: a TargetGroupBinding with target_type: ip sends
+  # ALB health checks and traffic straight to the pod's declared container
+  # port, which can be a fixed low port (e.g. the gateway listens on 80) —
+  # 1025-65535 silently excluded that and caused health checks to time out
+  # (confirmed live: describe-target-health returned Target.Timeout on
+  # cloudcart-production-gateway-tg until this was widened).
   node_security_group_additional_rules = {
     ingress_alb_to_nodes = {
-      description              = "Ingress from ALB security group to node ephemeral ports"
+      description              = "Ingress from ALB security group to node target ports"
       protocol                 = "tcp"
-      from_port                = 1025
+      from_port                = 80
       to_port                  = 65535
       type                     = "ingress"
       source_security_group_id = aws_security_group.alb.id
