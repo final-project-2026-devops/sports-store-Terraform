@@ -40,24 +40,35 @@ provider "aws" {
   }
 }
 
-# Short-lived, per-apply auth token used to talk to the Kubernetes API of the
-# cluster created in eks.tf. Using the AWS provider's data source (instead of
-# an `exec`-based plugin) avoids any dependency on the AWS CLI being present
-# in the Terraform Cloud run environment.
-data "aws_eks_cluster_auth" "this" {
-  name = module.eks.cluster_name
-}
-
+# Auth tokens for the Kubernetes API of the cluster created in eks.tf are
+# generated on demand via the `exec` plugin (instead of a single static
+# token fetched via data.aws_eks_cluster_auth) so each API call gets a fresh
+# token. Cluster creation + node groups can take longer than a token's
+# ~15-minute TTL, so a token fetched once at the start of the run would be
+# expired by the time later kubernetes_*/helm_release resources apply,
+# causing 401 Unauthorized errors. Requires the AWS CLI in the Terraform
+# Cloud run environment (this workspace runs on an Agent pool image that
+# includes it).
 provider "kubernetes" {
   host                   = module.eks.cluster_endpoint
   cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-  token                  = data.aws_eks_cluster_auth.this.token
+
+  exec {
+    api_version = "client.authentication.k8s.io/v1beta1"
+    command     = "aws"
+    args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
+  }
 }
 
 provider "helm" {
   kubernetes {
     host                   = module.eks.cluster_endpoint
     cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-    token                  = data.aws_eks_cluster_auth.this.token
+
+    exec {
+      api_version = "client.authentication.k8s.io/v1beta1"
+      command     = "aws"
+      args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
+    }
   }
 }
