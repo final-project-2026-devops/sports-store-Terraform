@@ -53,10 +53,20 @@ data "aws_iam_policy_document" "github_actions_assume_role" {
     }
 
     # Restrict to the configured GitHub org/repos, any branch/tag/environment.
+    #
+    # The wildcards after ${var.github_org} and each repo name aren't just
+    # for the trailing ref/branch -- GitHub's actual sub claim embeds
+    # immutable numeric org/repo IDs directly in the name segments, e.g.
+    # "repo:final-project-2026-devops@308724323/sports-store-order-service@1311892377:ref:refs/heads/main"
+    # (confirmed via CloudTrail on a real denied AssumeRoleWithWebIdentity
+    # call), not the plain "repo:org/repo:ref:..." format most docs/examples
+    # show. A pattern with the wildcard only at the end doesn't match that
+    # -- it has to also cover the "@<id>" suffix on both the org and the
+    # repo segments.
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = [for repo in var.github_allowed_repositories : "repo:${var.github_org}/${repo}:*"]
+      values   = [for repo in var.github_allowed_repositories : "repo:${var.github_org}*/${repo}*:*"]
     }
   }
 }
