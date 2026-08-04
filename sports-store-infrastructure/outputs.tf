@@ -86,6 +86,16 @@ output "dynamodb_service_irsa_role_arns" {
   value       = { for k, v in module.dynamodb_service_irsa_role : k => v.iam_role_arn }
 }
 
+output "catalog_variants_table_name" {
+  description = "Name of catalog-service's second table (product variants/stock, DYNAMODB_VARIANTS_TABLE_NAME)."
+  value       = aws_dynamodb_table.catalog_variants.name
+}
+
+output "catalog_variants_table_arn" {
+  description = "ARN of catalog-service's second table (product variants/stock)."
+  value       = aws_dynamodb_table.catalog_variants.arn
+}
+
 ############################################
 # ECR
 ############################################

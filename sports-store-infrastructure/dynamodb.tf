@@ -1,5 +1,14 @@
 ############################################
-# DynamoDB Tables (one per microservice)
+# DynamoDB Tables (one per microservice, plus a second table for
+# catalog-service's product variants/stock)
+#
+# Schema (hash/range keys + GSIs) comes from what the app code actually
+# queries by -- see DYNAMODB-SCHEMA-MISMATCH.md for the per-service
+# verification against each service's route files. The table shape this
+# file provisioned before did not match: wrong hash keys on 4 of the 5
+# tables, no GSIs at all, and catalog-service needs a second table (a
+# nested List can't be conditionally/atomically updated per-element in
+# DynamoDB, which is why variants/stock need their own table+hash key).
 ############################################
 
 locals {
@@ -7,24 +16,73 @@ locals {
     auth = {
       table_name = "auth-service-table"
       hash_key   = "user_id"
-    }
-    catalog = {
-      table_name = "catalog-service-table"
-      hash_key   = "item_id"
+      range_key  = null
+      # Login-by-email and the register uniqueness check query by email,
+      # not user_id.
+      gsis = [
+        { name = "email-index", hash_key = "email", range_key = null }
+      ]
     }
     cart = {
       table_name = "cart-service-table"
-      hash_key   = "cart_id"
+      hash_key   = "user_id"
+      range_key  = null
+      gsis       = []
+    }
+    catalog = {
+      table_name = "catalog-service-table"
+      hash_key   = "product_id"
+      range_key  = null
+      # Product-detail-by-slug lookups query by slug, not product_id.
+      gsis = [
+        { name = "slug-index", hash_key = "slug", range_key = null }
+      ]
     }
     order = {
       table_name = "order-service-table"
-      hash_key   = "order_id"
+      hash_key   = "order_number"
+      range_key  = null
+      # Order-history-by-user, sorted by creation time.
+      gsis = [
+        { name = "user-index", hash_key = "user_id", range_key = "created_at" }
+      ]
     }
     payment = {
       table_name = "payment-service-table"
-      hash_key   = "payment_id"
+      hash_key   = "idempotency_key"
+      range_key  = null
+      gsis       = []
     }
   }
+
+  catalog_variants_table = {
+    table_name = "catalog-service-variants-table"
+    hash_key   = "sku"
+    range_key  = null
+    # Variant lookups by parent product, e.g. "all variants of this product".
+    gsis = [
+      { name = "product-index", hash_key = "product_id", range_key = null }
+    ]
+  }
+
+  # DynamoDB rejects duplicate `attribute` definitions on the same table, so
+  # each table's hash/range key and every GSI's hash/range key are
+  # deduplicated into a single attribute list per table.
+  dynamodb_table_attribute_names = {
+    for k, v in local.dynamodb_tables : k => distinct(concat(
+      [v.hash_key],
+      v.range_key != null ? [v.range_key] : [],
+      [for g in v.gsis : g.hash_key],
+      [for g in v.gsis : g.range_key if g.range_key != null],
+    ))
+  }
+
+  catalog_variants_attribute_names = distinct(concat(
+    [local.catalog_variants_table.hash_key],
+    local.catalog_variants_table.range_key != null ? [local.catalog_variants_table.range_key] : [],
+    [for g in local.catalog_variants_table.gsis : g.hash_key],
+    [for g in local.catalog_variants_table.gsis : g.range_key if g.range_key != null],
+  ))
 }
 
 resource "aws_dynamodb_table" "this" {
@@ -33,10 +91,24 @@ resource "aws_dynamodb_table" "this" {
   name         = each.value.table_name
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = each.value.hash_key
+  range_key    = each.value.range_key
 
-  attribute {
-    name = each.value.hash_key
-    type = "S"
+  dynamic "attribute" {
+    for_each = local.dynamodb_table_attribute_names[each.key]
+    content {
+      name = attribute.value
+      type = "S"
+    }
+  }
+
+  dynamic "global_secondary_index" {
+    for_each = { for g in each.value.gsis : g.name => g }
+    content {
+      name            = global_secondary_index.value.name
+      hash_key        = global_secondary_index.value.hash_key
+      range_key       = global_secondary_index.value.range_key
+      projection_type = "ALL"
+    }
   }
 
   point_in_time_recovery {
@@ -53,12 +125,50 @@ resource "aws_dynamodb_table" "this" {
   })
 }
 
+resource "aws_dynamodb_table" "catalog_variants" {
+  name         = local.catalog_variants_table.table_name
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = local.catalog_variants_table.hash_key
+
+  dynamic "attribute" {
+    for_each = local.catalog_variants_attribute_names
+    content {
+      name = attribute.value
+      type = "S"
+    }
+  }
+
+  dynamic "global_secondary_index" {
+    for_each = { for g in local.catalog_variants_table.gsis : g.name => g }
+    content {
+      name            = global_secondary_index.value.name
+      hash_key        = global_secondary_index.value.hash_key
+      range_key       = global_secondary_index.value.range_key
+      projection_type = "ALL"
+    }
+  }
+
+  point_in_time_recovery {
+    enabled = var.enable_dynamodb_pitr
+  }
+
+  server_side_encryption {
+    enabled = true
+  }
+
+  tags = merge(local.common_tags, {
+    Name    = local.catalog_variants_table.table_name
+    Service = "catalog-service"
+  })
+}
+
 ############################################
 # Per-service least-privilege IAM policies + IRSA roles
 #
 # Each microservice pod assumes its own IRSA role (bound to a Kubernetes
 # ServiceAccount named "<service>-service-sa" in var.k8s_namespace) that can
-# only read/write the single DynamoDB table it owns.
+# only read/write the table(s) it owns. catalog-service is the only service
+# with two tables.
 ############################################
 
 resource "aws_iam_policy" "dynamodb_service_access" {
@@ -85,10 +195,16 @@ resource "aws_iam_policy" "dynamodb_service_access" {
           "dynamodb:ConditionCheckItem",
           "dynamodb:DescribeTable",
         ]
-        Resource = [
-          aws_dynamodb_table.this[each.key].arn,
-          "${aws_dynamodb_table.this[each.key].arn}/index/*",
-        ]
+        Resource = concat(
+          [
+            aws_dynamodb_table.this[each.key].arn,
+            "${aws_dynamodb_table.this[each.key].arn}/index/*",
+          ],
+          each.key == "catalog" ? [
+            aws_dynamodb_table.catalog_variants.arn,
+            "${aws_dynamodb_table.catalog_variants.arn}/index/*",
+          ] : []
+        )
       }
     ]
   })
