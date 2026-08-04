@@ -144,9 +144,28 @@ module "eks" {
   # Grant the GitHub Actions CI/CD role cluster-admin via an EKS access
   # entry so pipelines can `kubectl apply` deployments without a static
   # aws-auth ConfigMap edit.
+  #
+  # devops-admin also needs an explicit entry: it's the identity Terraform
+  # Cloud's remote runs authenticate as (workspace-level AWS_ACCESS_KEY_ID),
+  # and it is not the cluster's original creator-admin principal, so without
+  # this it has no cluster access at all. That gap is what caused
+  # kubernetes_service_account / helm_release applies to fail with
+  # "Unauthorized" even after fixing the kubernetes/helm provider auth to
+  # use the exec plugin.
   access_entries = {
     github_actions = {
       principal_arn = aws_iam_role.github_actions.arn
+
+      policy_associations = {
+        admin = {
+          policy_arn   = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = { type = "cluster" }
+        }
+      }
+    }
+
+    devops_admin = {
+      principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/devops-admin"
 
       policy_associations = {
         admin = {
