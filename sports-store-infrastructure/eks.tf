@@ -37,6 +37,75 @@ resource "aws_security_group" "alb" {
 }
 
 ############################################
+# ALB in front of the EKS cluster (CloudFront's /api/* origin)
+#
+# Created directly by Terraform, not dynamically via a Kubernetes Ingress --
+# this keeps its DNS name known immediately after apply, so CloudFront (in
+# frontend_s3_cloudfront.tf) can use it as an origin without waiting on
+# Michael's gateway/Ingress to exist first. The target group starts out
+# with 0 healthy targets until it's bound to a real Service.
+#
+# To actually receive traffic: bind this target group to the gateway's
+# Kubernetes Service via a TargetGroupBinding custom resource (provided by
+# the AWS Load Balancer Controller, already installed below), e.g.:
+#
+#   apiVersion: elbv2.k8s.aws/v1beta1
+#   kind: TargetGroupBinding
+#   metadata:
+#     name: gateway
+#     namespace: sports-store
+#   spec:
+#     serviceRef:
+#       name: gateway
+#       port: 80
+#     targetGroupARN: <alb_target_group_arn output>
+#     targetType: ip
+############################################
+
+resource "aws_lb" "main" {
+  name               = "${local.cluster_name}-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = module.vpc.public_subnets
+
+  tags = merge(local.common_tags, {
+    Name = "${local.cluster_name}-alb"
+  })
+}
+
+resource "aws_lb_target_group" "gateway" {
+  name        = "${local.cluster_name}-gateway-tg"
+  port        = 80
+  protocol    = "HTTP"
+  vpc_id      = module.vpc.vpc_id
+  target_type = "ip"
+
+  health_check {
+    path                = "/"
+    protocol            = "HTTP"
+    matcher             = "200-399"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+  }
+
+  tags = local.common_tags
+}
+
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.gateway.arn
+  }
+}
+
+############################################
 # EKS Cluster
 ############################################
 

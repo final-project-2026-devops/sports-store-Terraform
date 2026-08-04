@@ -67,6 +67,21 @@ output "lb_controller_irsa_role_arn" {
   value       = module.lb_controller_irsa_role.iam_role_arn
 }
 
+output "alb_dns_name" {
+  description = "DNS name of the ALB in front of the cluster (the CloudFront /api/* origin). Not meant to be called directly -- use site_domain_name."
+  value       = aws_lb.main.dns_name
+}
+
+output "alb_gateway_target_group_arn" {
+  description = "ARN of the ALB's target group. Bind the gateway's Kubernetes Service to this via a TargetGroupBinding custom resource to actually receive traffic."
+  value       = aws_lb_target_group.gateway.arn
+}
+
+output "site_domain_name" {
+  description = "The stable public domain for both the frontend (/*) and the API (/api/*). This is what the frontend build's API base URL and any E2E tests should point at."
+  value       = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+}
+
 ############################################
 # DynamoDB
 ############################################
